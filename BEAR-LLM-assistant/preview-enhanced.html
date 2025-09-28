@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BEAR AI - Local LLM Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --bg-primary: #171717;
+            --bg-secondary: #212121;
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #ececf1;
+            --text-secondary: #a8a8b3;
+            --text-tertiary: #6e6e80;
+            --border-primary: #2d2d2d;
+            --border-secondary: #353535;
+            --accent: #10a37f;
+            --accent-hover: #0d8f6f;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7f7f8;
+            --bg-tertiary: #ececf1;
+            --text-primary: #0d0d0d;
+            --text-secondary: #6e6e80;
+            --text-tertiary: #9a9aa8;
+            --border-primary: #e5e5e5;
+            --border-secondary: #d4d4d8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: var(--border-primary);
+            border-radius: 4px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .animate-fadeIn {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .animate-slideIn {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .animate-pulse {
+            animation: pulse 2s infinite;
+        }
+
+        .modal-backdrop {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .model-card {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .model-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .badge-info {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+        }
+
+        .spinner {
+            border: 2px solid var(--border-primary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .logo-image {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-online {
+            background: var(--success);
+        }
+
+        .status-offline {
+            background: var(--danger);
+        }
+
+        .status-loading {
+            background: var(--warning);
+        }
+    </style>
+</head>
+<body>
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <div id="sidebar" class="w-64 transition-all duration-300 flex flex-col" style="background: var(--bg-secondary); border-right: 1px solid var(--border-primary);">
+            <div class="p-4" style="border-bottom: 1px solid var(--border-primary);">
+                <button onclick="newChat()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-all hover:shadow-lg"
+                        style="background: var(--bg-primary); border: 1px solid var(--border-primary);">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span class="text-sm font-medium">New Chat</span>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto scrollbar-custom p-3">
+                <div class="mb-2 px-2 text-xs font-semibold" style="color: var(--text-tertiary);">RECENT CHATS</div>
+                <div class="space-y-1">
+                    <button class="w-full text-left px-3 py-2 rounded-lg text-sm transition-all"
+                            style="background: rgba(16, 163, 127, 0.1); color: var(--text-primary);">
+                        <div class="truncate font-medium">Model Configuration</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-tertiary);">Just now</div>
+                    </button>
+                    <button class="w-full text-left px-3 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+                            style="color: var(--text-secondary);">
+                        <div class="truncate">Legal Document Analysis</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-tertiary);">2 hours ago</div>
+                    </button>
+                    <button class="w-full text-left px-3 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+                            style="color: var(--text-secondary);">
+                        <div class="truncate">Contract Review</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-tertiary);">Yesterday</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4 space-y-3" style="border-top: 1px solid var(--border-primary);">
+                <!-- Model Status -->
+                <div class="flex items-center justify-between px-2">
+                    <div class="flex items-center gap-2">
+                        <div class="status-indicator status-online"></div>
+                        <span class="text-xs" style="color: var(--text-secondary);">Model Loaded</span>
+                    </div>
+                    <button onclick="openModelSearch()" class="text-xs hover:underline" style="color: var(--accent);">
+                        Change
+                    </button>
+                </div>
+
+                <!-- Current Model -->
+                <div class="px-2 py-1.5 rounded-lg text-xs" style="background: var(--bg-tertiary); border: 1px solid var(--border-primary);">
+                    <div class="font-medium">Llama-2-7B-Chat</div>
+                    <div style="color: var(--text-tertiary);">7B parameters • 4.2GB</div>
+                </div>
+
+                <!-- Theme Toggle -->
+                <button onclick="toggleTheme()" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all hover:opacity-80">
+                    <svg id="themeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                    </svg>
+                    <span id="themeText" class="text-sm">Dark Mode</span>
+                </button>
+
+                <!-- Settings -->
+                <button onclick="openSettings()" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all hover:opacity-80">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <span class="text-sm">Settings</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col" style="background: var(--bg-primary);">
+            <!-- Header -->
+            <header class="h-14 flex items-center justify-between px-4" style="border-bottom: 1px solid var(--border-primary);">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="p-2 rounded-lg transition-all hover:opacity-80">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <img src="../BEAR_AI_logo.png" alt="BEAR AI" class="logo-image">
+                        <span class="font-semibold text-lg">BEAR AI Assistant</span>
+                        <span class="badge badge-info">LOCAL</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-xs px-2 py-1 rounded-full" style="background: var(--bg-secondary); color: var(--text-secondary);">
+                        🔒 100% Private • No Internet Required
+                    </div>
+                </div>
+            </header>
+
+            <!-- Messages Area -->
+            <div class="flex-1 overflow-y-auto scrollbar-custom" id="chatArea">
+                <div class="max-w-4xl mx-auto">
+                    <!-- Welcome Screen -->
+                    <div id="welcomeScreen" class="flex flex-col items-center justify-center h-full p-8 text-center animate-fadeIn">
+                        <img src="../BEAR_AI_logo.png" alt="BEAR AI" style="width: 80px; height: 80px; margin-bottom: 24px;">
+                        <h2 class="text-3xl font-bold mb-2" style="color: var(--text-primary);">
+                            Welcome to BEAR AI
+                        </h2>
+                        <p class="mb-8 max-w-md" style="color: var(--text-secondary);">
+                            Your 100% local, private AI assistant. No data leaves your device.
+                        </p>
+
+                        <button onclick="openModelSearch()" class="mb-6 px-6 py-3 rounded-lg font-medium transition-all hover:shadow-lg"
+                                style="background: var(--accent); color: white;">
+                            🚀 Setup Your First Model
+                        </button>
+
+                        <div class="grid grid-cols-2 gap-4 max-w-2xl">
+                            <div class="p-4 rounded-lg cursor-pointer transition-all model-card"
+                                 style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <h3 class="font-medium mb-2">🤖 Local LLMs</h3>
+                                <p class="text-sm" style="color: var(--text-secondary);">
+                                    Run Llama, Mistral, Phi, and more locally
+                                </p>
+                            </div>
+                            <div class="p-4 rounded-lg cursor-pointer transition-all model-card"
+                                 style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <h3 class="font-medium mb-2">🔒 100% Private</h3>
+                                <p class="text-sm" style="color: var(--text-secondary);">
+                                    No telemetry, no cloud, no data collection
+                                </p>
+                            </div>
+                            <div class="p-4 rounded-lg cursor-pointer transition-all model-card"
+                                 style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <h3 class="font-medium mb-2">⚡ GPU Accelerated</h3>
+                                <p class="text-sm" style="color: var(--text-secondary);">
+                                    CUDA, Metal, and CPU support
+                                </p>
+                            </div>
+                            <div class="p-4 rounded-lg cursor-pointer transition-all model-card"
+                                 style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <h3 class="font-medium mb-2">🎯 Hugging Face Hub</h3>
+                                <p class="text-sm" style="color: var(--text-secondary);">
+                                    Download models directly from HF
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div style="border-top: 1px solid var(--border-primary); background: var(--bg-primary);">
+                <div class="max-w-4xl mx-auto p-4">
+                    <div class="flex items-end gap-3">
+                        <button class="p-2.5 rounded-lg transition-all hover:opacity-80">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--text-secondary);">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                            </svg>
+                        </button>
+
+                        <div class="flex-1 relative">
+                            <textarea placeholder="Message BEAR AI..." rows="1"
+                                    class="w-full px-4 py-3 rounded-lg resize-none focus:outline-none transition-all"
+                                    style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary); min-height: 48px;"></textarea>
+                        </div>
+
+                        <button class="p-2.5 rounded-lg transition-all"
+                                style="background: var(--accent); color: white;">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="mt-2 text-xs text-center" style="color: var(--text-tertiary);">
+                        BEAR AI runs 100% locally. No internet connection required.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Search Modal -->
+        <div id="modelSearchModal" class="fixed inset-0 z-50 hidden">
+            <div class="modal-backdrop absolute inset-0" onclick="closeModelSearch()"></div>
+            <div class="relative flex items-center justify-center min-h-screen p-4">
+                <div class="relative w-full max-w-4xl max-h-[80vh] rounded-xl shadow-2xl overflow-hidden animate-fadeIn"
+                     style="background: var(--bg-primary); border: 1px solid var(--border-primary);">
+
+                    <!-- Modal Header -->
+                    <div class="sticky top-0 p-6 z-10" style="background: var(--bg-primary); border-bottom: 1px solid var(--border-primary);">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="text-2xl font-bold mb-1">🤗 Hugging Face Model Browser</h2>
+                                <p class="text-sm" style="color: var(--text-secondary);">Search and download open-source LLMs to run locally</p>
+                            </div>
+                            <button onclick="closeModelSearch()" class="p-2 rounded-lg hover:opacity-80">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Search Bar -->
+                        <div class="flex gap-3">
+                            <div class="flex-1 relative">
+                                <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--text-tertiary);">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                                <input type="text" placeholder="Search models... (e.g., llama, mistral, phi)"
+                                       class="w-full pl-10 pr-4 py-3 rounded-lg focus:outline-none"
+                                       style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary);"
+                                       onkeyup="searchModels(this.value)">
+                            </div>
+                            <select class="px-4 py-3 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary);">
+                                <option>All Sizes</option>
+                                <option>< 1GB</option>
+                                <option>1-5GB</option>
+                                <option>5-10GB</option>
+                                <option>> 10GB</option>
+                            </select>
+                            <select class="px-4 py-3 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary);">
+                                <option>All Types</option>
+                                <option>Chat</option>
+                                <option>Instruct</option>
+                                <option>Code</option>
+                                <option>Base</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Model List -->
+                    <div class="overflow-y-auto p-6 space-y-4" style="max-height: 60vh;">
+                        <!-- Popular Models Section -->
+                        <div id="searchResults">
+                            <h3 class="text-sm font-semibold mb-3" style="color: var(--text-tertiary);">RECOMMENDED MODELS</h3>
+
+                            <!-- Model Card 1 -->
+                            <div class="model-card p-4 rounded-lg mb-3" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <h4 class="font-semibold">meta-llama/Llama-2-7b-chat-hf</h4>
+                                            <span class="badge badge-success">Recommended</span>
+                                            <span class="badge badge-info">Chat</span>
+                                        </div>
+                                        <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                            Meta's Llama 2 chat model. Great for general conversation and assistance.
+                                        </p>
+                                        <div class="flex items-center gap-4 text-xs" style="color: var(--text-tertiary);">
+                                            <span>📊 7B parameters</span>
+                                            <span>💾 4.2GB</span>
+                                            <span>⭐ 45.2k likes</span>
+                                            <span>📥 2.1M downloads</span>
+                                        </div>
+                                    </div>
+                                    <button onclick="downloadModel('llama-2-7b-chat')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                            style="background: var(--accent); color: white;">
+                                        Download
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Model Card 2 -->
+                            <div class="model-card p-4 rounded-lg mb-3" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <h4 class="font-semibold">mistralai/Mistral-7B-Instruct-v0.2</h4>
+                                            <span class="badge badge-info">Instruct</span>
+                                        </div>
+                                        <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                            Fast and efficient model from Mistral AI. Excellent for instruction following.
+                                        </p>
+                                        <div class="flex items-center gap-4 text-xs" style="color: var(--text-tertiary);">
+                                            <span>📊 7B parameters</span>
+                                            <span>💾 4.1GB</span>
+                                            <span>⭐ 28.5k likes</span>
+                                            <span>📥 1.5M downloads</span>
+                                        </div>
+                                    </div>
+                                    <button onclick="downloadModel('mistral-7b-instruct')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                            style="background: var(--accent); color: white;">
+                                        Download
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Model Card 3 -->
+                            <div class="model-card p-4 rounded-lg mb-3" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <h4 class="font-semibold">microsoft/phi-2</h4>
+                                            <span class="badge badge-warning">Tiny</span>
+                                            <span class="badge badge-info">Base</span>
+                                        </div>
+                                        <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                            Microsoft's compact model. Runs on most hardware with good performance.
+                                        </p>
+                                        <div class="flex items-center gap-4 text-xs" style="color: var(--text-tertiary);">
+                                            <span>📊 2.7B parameters</span>
+                                            <span>💾 1.6GB</span>
+                                            <span>⭐ 18.3k likes</span>
+                                            <span>📥 890k downloads</span>
+                                        </div>
+                                    </div>
+                                    <button onclick="downloadModel('phi-2')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                            style="background: var(--accent); color: white;">
+                                        Download
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Model Card 4 -->
+                            <div class="model-card p-4 rounded-lg mb-3" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <h4 class="font-semibold">codellama/CodeLlama-7b-Instruct-hf</h4>
+                                            <span class="badge badge-info">Code</span>
+                                        </div>
+                                        <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                            Specialized for code generation and understanding. Based on Llama 2.
+                                        </p>
+                                        <div class="flex items-center gap-4 text-xs" style="color: var(--text-tertiary);">
+                                            <span>📊 7B parameters</span>
+                                            <span>💾 4.2GB</span>
+                                            <span>⭐ 12.1k likes</span>
+                                            <span>📥 650k downloads</span>
+                                        </div>
+                                    </div>
+                                    <button onclick="downloadModel('codellama-7b')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                            style="background: var(--accent); color: white;">
+                                        Download
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Download Progress (Hidden by default) -->
+                        <div id="downloadProgress" class="hidden p-4 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm font-medium">Downloading model...</span>
+                                <span id="progressPercent" class="text-sm" style="color: var(--text-secondary);">0%</span>
+                            </div>
+                            <div class="w-full rounded-full h-2" style="background: var(--bg-tertiary);">
+                                <div id="progressBar" class="h-full rounded-full transition-all" style="background: var(--accent); width: 0%;"></div>
+                            </div>
+                            <div class="mt-2 text-xs" style="color: var(--text-tertiary);">
+                                <span id="progressInfo">Preparing download...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <div class="sticky bottom-0 p-4" style="background: var(--bg-primary); border-top: 1px solid var(--border-primary);">
+                        <div class="flex items-center justify-between text-xs" style="color: var(--text-tertiary);">
+                            <span>💡 Models are downloaded to your local storage and run offline</span>
+                            <a href="#" class="hover:underline" style="color: var(--accent);">Learn more about local LLMs →</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sidebarOpen = true;
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme);
+
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+
+            if (newTheme === 'light') {
+                themeIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
+                themeText.textContent = 'Light Mode';
+            } else {
+                themeIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>';
+                themeText.textContent = 'Dark Mode';
+            }
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebarOpen = !sidebarOpen;
+            sidebar.style.width = sidebarOpen ? '256px' : '0';
+            sidebar.style.overflow = sidebarOpen ? 'visible' : 'hidden';
+        }
+
+        function openModelSearch() {
+            document.getElementById('modelSearchModal').classList.remove('hidden');
+        }
+
+        function closeModelSearch() {
+            document.getElementById('modelSearchModal').classList.add('hidden');
+        }
+
+        function openSettings() {
+            alert('Settings panel would open here with:\n\n• GPU/CPU selection\n• Memory allocation\n• Model quantization options\n• Temperature & sampling settings\n• System paths configuration');
+        }
+
+        function newChat() {
+            const welcomeScreen = document.getElementById('welcomeScreen');
+            const chatArea = document.getElementById('chatArea');
+
+            // Show a sample conversation
+            chatArea.innerHTML = `
+                <div class="max-w-4xl mx-auto py-8">
+                    <div class="px-6 py-4">
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--text-primary); color: var(--bg-primary);">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="font-medium text-sm">You</span>
+                                    <span class="text-xs" style="color: var(--text-tertiary);">Just now</span>
+                                </div>
+                                <p>What local LLM would you recommend for legal document analysis?</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="px-6 py-4" style="background: var(--bg-secondary);">
+                        <div class="flex items-start gap-3">
+                            <img src="../BEAR_AI_logo.png" alt="BEAR" class="w-8 h-8 rounded-lg">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="font-medium text-sm">BEAR AI</span>
+                                    <span class="text-xs" style="color: var(--text-tertiary);">Just now</span>
+                                </div>
+                                <div class="space-y-3">
+                                    <p>For legal document analysis, I recommend considering these local LLMs:</p>
+
+                                    <div class="space-y-2">
+                                        <div class="p-3 rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-primary);">
+                                            <strong>1. Llama-2-13B-chat</strong>
+                                            <p class="text-sm mt-1" style="color: var(--text-secondary);">Excellent comprehension and reasoning capabilities. The 13B parameter version offers better context understanding for complex legal documents while still being runnable on consumer GPUs (RTX 3080+).</p>
+                                        </div>
+
+                                        <div class="p-3 rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-primary);">
+                                            <strong>2. Mistral-7B-Instruct</strong>
+                                            <p class="text-sm mt-1" style="color: var(--text-secondary);">More efficient option that performs surprisingly well on document understanding tasks. Good balance between performance and resource usage.</p>
+                                        </div>
+
+                                        <div class="p-3 rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-primary);">
+                                            <strong>3. Zephyr-7B-beta</strong>
+                                            <p class="text-sm mt-1" style="color: var(--text-secondary);">Fine-tuned version of Mistral specifically for helpful assistant behaviors. Excellent at following instructions for document extraction and analysis.</p>
+                                        </div>
+                                    </div>
+
+                                    <p>All of these models can be downloaded directly from Hugging Face and run locally with BEAR AI, ensuring your sensitive legal documents never leave your device.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function searchModels(query) {
+            const searchResults = document.getElementById('searchResults');
+
+            if (!query) {
+                // Show default recommended models
+                return;
+            }
+
+            // Simulate search
+            searchResults.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner mx-auto mb-2"></div>
+                    <p class="text-sm" style="color: var(--text-secondary);">Searching for "${query}"...</p>
+                </div>
+            `;
+
+            setTimeout(() => {
+                searchResults.innerHTML = `
+                    <h3 class="text-sm font-semibold mb-3" style="color: var(--text-tertiary);">SEARCH RESULTS FOR "${query.toUpperCase()}"</h3>
+                    <p class="text-sm mb-3" style="color: var(--text-secondary);">Found 24 models matching your search</p>
+                ` + searchResults.innerHTML;
+            }, 500);
+        }
+
+        function downloadModel(modelName) {
+            const progress = document.getElementById('downloadProgress');
+            const progressBar = document.getElementById('progressBar');
+            const progressPercent = document.getElementById('progressPercent');
+            const progressInfo = document.getElementById('progressInfo');
+
+            progress.classList.remove('hidden');
+
+            let percent = 0;
+            const interval = setInterval(() => {
+                percent += Math.random() * 10;
+                if (percent >= 100) {
+                    percent = 100;
+                    clearInterval(interval);
+                    progressInfo.textContent = 'Download complete! Loading model...';
+
+                    setTimeout(() => {
+                        closeModelSearch();
+                        alert(`Model ${modelName} has been successfully downloaded and loaded!\n\nYou can now start chatting with your local AI assistant.`);
+                    }, 1500);
+                } else {
+                    progressInfo.textContent = `Downloading ${modelName}... ${(percent * 42 / 100).toFixed(1)}MB / 4.2GB`;
+                }
+
+                progressBar.style.width = percent + '%';
+                progressPercent.textContent = Math.floor(percent) + '%';
+            }, 200);
+        }
+
+        // Add keyboard shortcut for model search
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                openModelSearch();
+            }
+        });
+    </script>
+</body>
+</html>

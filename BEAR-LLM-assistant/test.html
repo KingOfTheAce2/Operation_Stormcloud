@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BEAR AI - Legal Assistant</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #1e293b;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .logo { font-size: 1.5rem; font-weight: bold; }
+        .badge {
+            background: #dc2626;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 2rem;
+            gap: 1rem;
+        }
+        .chat-area {
+            flex: 1;
+            background: #1e293b;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        .message {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            background: #334155;
+        }
+        .message.user { background: #3b82f6; }
+        .message.assistant { background: #059669; }
+        .input-area {
+            display: flex;
+            gap: 0.5rem;
+        }
+        input {
+            flex: 1;
+            padding: 0.75rem;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.375rem;
+            color: white;
+            font-size: 1rem;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover { background: #2563eb; }
+        .pii-warning {
+            background: #dc2626;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🐻 BEAR AI</div>
+        <div class="badge">PII Protection Active</div>
+    </div>
+
+    <div class="container">
+        <div class="pii-warning" id="piiWarning">
+            ⚠️ PII Detected - Your message will be automatically redacted
+        </div>
+
+        <div class="chat-area" id="chatArea">
+            <div class="message assistant">
+                Welcome to BEAR AI - Your secure legal assistant. I'm designed to help with legal research while protecting sensitive information. How can I assist you today?
+            </div>
+        </div>
+
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="Type your legal question... (PII will be automatically removed)" />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        function detectPII(text) {
+            const patterns = [
+                /\b\d{3}-\d{2}-\d{4}\b/g, // SSN
+                /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, // Email
+                /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, // Phone
+                /\b(?:\d{4}[-\s]?){3}\d{4}\b/g // Credit Card
+            ];
+
+            return patterns.some(pattern => pattern.test(text));
+        }
+
+        function redactPII(text) {
+            let redacted = text;
+            redacted = redacted.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN_REDACTED]');
+            redacted = redacted.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, '[EMAIL_REDACTED]');
+            redacted = redacted.replace(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, '[PHONE_REDACTED]');
+            redacted = redacted.replace(/\b(?:\d{4}[-\s]?){3}\d{4}\b/g, '[CREDIT_CARD_REDACTED]');
+            return redacted;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const chatArea = document.getElementById('chatArea');
+            const piiWarning = document.getElementById('piiWarning');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            // Check for PII
+            if (detectPII(message)) {
+                piiWarning.style.display = 'block';
+                setTimeout(() => piiWarning.style.display = 'none', 3000);
+            }
+
+            // Add user message (show redacted version)
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.textContent = redactPII(message);
+            chatArea.appendChild(userDiv);
+
+            // Simulate response
+            setTimeout(() => {
+                const assistantDiv = document.createElement('div');
+                assistantDiv.className = 'message assistant';
+                assistantDiv.textContent = 'I understand your query. For full functionality, please complete the Rust installation and run the complete application. Your message has been processed with PII protection.';
+                chatArea.appendChild(assistantDiv);
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }, 1000);
+
+            input.value = '';
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

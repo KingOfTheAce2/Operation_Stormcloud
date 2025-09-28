@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BEAR AI - System-Aware Local LLM Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --bg-primary: #171717;
+            --bg-secondary: #212121;
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #ececf1;
+            --text-secondary: #a8a8b3;
+            --text-tertiary: #6e6e80;
+            --border-primary: #2d2d2d;
+            --border-secondary: #353535;
+            --accent: #10a37f;
+            --accent-hover: #0d8f6f;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --info: #3b82f6;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7f7f8;
+            --bg-tertiary: #ececf1;
+            --text-primary: #0d0d0d;
+            --text-secondary: #6e6e80;
+            --text-tertiary: #9a9aa8;
+            --border-primary: #e5e5e5;
+            --border-secondary: #d4d4d8;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: var(--border-primary);
+            border-radius: 4px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .animate-fadeIn {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .animate-pulse {
+            animation: pulse 2s infinite;
+        }
+
+        .modal-backdrop {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .model-card {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .model-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .badge-warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .badge-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .badge-info { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+
+        .spinner {
+            border: 2px solid var(--border-primary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.35s;
+            stroke: var(--accent);
+            stroke-dasharray: 251.2;
+        }
+
+        .gpu-meter {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .gpu-meter-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .gpu-meter-ok { background: var(--success); }
+        .gpu-meter-warning { background: var(--warning); }
+        .gpu-meter-danger { background: var(--danger); }
+
+        .compatibility-excellent { border-color: var(--success) !important; background: rgba(16, 185, 129, 0.05) !important; }
+        .compatibility-good { border-color: var(--info) !important; background: rgba(59, 130, 246, 0.05) !important; }
+        .compatibility-borderline { border-color: var(--warning) !important; background: rgba(245, 158, 11, 0.05) !important; }
+        .compatibility-not-recommended { border-color: var(--danger) !important; background: rgba(239, 68, 68, 0.05) !important; }
+    </style>
+</head>
+<body onload="detectSystemSpecs()">
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <div id="sidebar" class="w-64 transition-all duration-300 flex flex-col" style="background: var(--bg-secondary); border-right: 1px solid var(--border-primary);">
+            <!-- System Status Panel -->
+            <div class="p-4" style="border-bottom: 1px solid var(--border-primary);">
+                <h3 class="text-xs font-semibold mb-3" style="color: var(--text-tertiary);">SYSTEM STATUS</h3>
+
+                <!-- GPU Status -->
+                <div class="mb-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs">GPU</span>
+                        <span id="gpuName" class="text-xs" style="color: var(--text-secondary);">RTX 3080 12GB</span>
+                    </div>
+                    <div class="gpu-meter">
+                        <div id="gpuMeter" class="gpu-meter-fill gpu-meter-ok" style="width: 35%;"></div>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-xs" style="color: var(--text-tertiary);">VRAM: 4.2/12GB</span>
+                        <span id="gpuTemp" class="text-xs" style="color: var(--text-tertiary);">65°C</span>
+                    </div>
+                </div>
+
+                <!-- CPU Status -->
+                <div class="mb-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs">CPU</span>
+                        <span id="cpuName" class="text-xs" style="color: var(--text-secondary);">Intel i7-10700K</span>
+                    </div>
+                    <div class="gpu-meter">
+                        <div id="cpuMeter" class="gpu-meter-fill gpu-meter-ok" style="width: 45%;"></div>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-xs" style="color: var(--text-tertiary);">Usage: 45%</span>
+                        <span id="cpuTemp" class="text-xs" style="color: var(--text-tertiary);">72°C</span>
+                    </div>
+                </div>
+
+                <!-- RAM Status -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs">RAM</span>
+                        <span id="ramInfo" class="text-xs" style="color: var(--text-secondary);">32GB DDR4</span>
+                    </div>
+                    <div class="gpu-meter">
+                        <div id="ramMeter" class="gpu-meter-fill gpu-meter-ok" style="width: 55%;"></div>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-xs" style="color: var(--text-tertiary);">Available: 14.4/32GB</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- New Chat Button -->
+            <div class="p-4" style="border-bottom: 1px solid var(--border-primary);">
+                <button class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-all hover:shadow-lg"
+                        style="background: var(--bg-primary); border: 1px solid var(--border-primary);">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span class="text-sm font-medium">New Chat</span>
+                </button>
+            </div>
+
+            <!-- Chat History -->
+            <div class="flex-1 overflow-y-auto scrollbar-custom p-3">
+                <div class="mb-2 px-2 text-xs font-semibold" style="color: var(--text-tertiary);">RECENT CHATS</div>
+                <div class="space-y-1">
+                    <button class="w-full text-left px-3 py-2 rounded-lg text-sm transition-all"
+                            style="background: rgba(16, 163, 127, 0.1); color: var(--text-primary);">
+                        <div class="truncate font-medium">System Configuration</div>
+                        <div class="text-xs mt-0.5" style="color: var(--text-tertiary);">Just now</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Model & Settings -->
+            <div class="p-4 space-y-3" style="border-top: 1px solid var(--border-primary);">
+                <div class="px-2 py-1.5 rounded-lg text-xs" style="background: var(--bg-tertiary); border: 1px solid var(--border-primary);">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-medium">Llama-2-7B</span>
+                        <span class="badge badge-success">Running</span>
+                    </div>
+                    <div style="color: var(--text-tertiary);">VRAM: 4.2GB • CPU: 15%</div>
+                </div>
+
+                <button onclick="openModelSearch()" class="w-full px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                        style="background: var(--accent); color: white;">
+                    🤗 Browse Models
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col" style="background: var(--bg-primary);">
+            <!-- Header -->
+            <header class="h-14 flex items-center justify-between px-4" style="border-bottom: 1px solid var(--border-primary);">
+                <div class="flex items-center gap-3">
+                    <img src="../BEAR_AI_logo.png" alt="BEAR AI" style="width: 32px; height: 32px;">
+                    <span class="font-semibold text-lg">BEAR AI Assistant</span>
+                    <span class="badge badge-info">LOCAL</span>
+                    <span id="systemCapability" class="badge badge-success">High Performance System</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="openSystemMonitor()" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                            style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                        📊 System Monitor
+                    </button>
+                </div>
+            </header>
+
+            <!-- Chat Area -->
+            <div class="flex-1 overflow-y-auto scrollbar-custom">
+                <div class="max-w-4xl mx-auto">
+                    <div class="flex flex-col items-center justify-center h-full p-8 text-center animate-fadeIn">
+                        <img src="../BEAR_AI_logo.png" alt="BEAR AI" style="width: 80px; height: 80px; margin-bottom: 24px;">
+                        <h2 class="text-3xl font-bold mb-2">Welcome to BEAR AI</h2>
+                        <p class="mb-6 max-w-md" style="color: var(--text-secondary);">
+                            System-aware local AI that protects your hardware
+                        </p>
+
+                        <!-- System Recommendations -->
+                        <div id="systemRecommendations" class="w-full max-w-2xl mb-6 p-4 rounded-lg animate-fadeIn"
+                             style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                            <h3 class="font-semibold mb-3">📊 System Analysis Complete</h3>
+                            <div class="space-y-2 text-left">
+                                <div class="flex items-center gap-2">
+                                    <span class="badge badge-success">✓</span>
+                                    <span class="text-sm">GPU detected: NVIDIA RTX 3080 (12GB VRAM)</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="badge badge-success">✓</span>
+                                    <span class="text-sm">32GB RAM available for model loading</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="badge badge-success">✓</span>
+                                    <span class="text-sm">CUDA 12.1 support enabled</span>
+                                </div>
+                            </div>
+                            <div class="mt-3 p-3 rounded-lg" style="background: var(--bg-tertiary);">
+                                <p class="text-sm font-medium mb-1">Recommended Models for Your System:</p>
+                                <p class="text-xs" style="color: var(--text-secondary);">
+                                    • Large models (13B-20B): Excellent performance<br>
+                                    • Medium models (7B): Instant responses<br>
+                                    • Can run 2-3 models simultaneously
+                                </p>
+                            </div>
+                        </div>
+
+                        <button onclick="openModelSearch()" class="px-6 py-3 rounded-lg font-medium transition-all hover:shadow-lg"
+                                style="background: var(--accent); color: white;">
+                            🚀 Find Compatible Models
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div style="border-top: 1px solid var(--border-primary); background: var(--bg-primary);">
+                <div class="max-w-4xl mx-auto p-4">
+                    <div class="flex items-end gap-3">
+                        <textarea placeholder="Message BEAR AI..." rows="1"
+                                class="flex-1 px-4 py-3 rounded-lg resize-none focus:outline-none transition-all"
+                                style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary); min-height: 48px;"></textarea>
+                        <button class="p-2.5 rounded-lg transition-all"
+                                style="background: var(--accent); color: white;">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Search Modal with Compatibility Check -->
+        <div id="modelSearchModal" class="fixed inset-0 z-50 hidden">
+            <div class="modal-backdrop absolute inset-0" onclick="closeModelSearch()"></div>
+            <div class="relative flex items-center justify-center min-h-screen p-4">
+                <div class="relative w-full max-w-5xl max-h-[85vh] rounded-xl shadow-2xl overflow-hidden animate-fadeIn"
+                     style="background: var(--bg-primary); border: 1px solid var(--border-primary);">
+
+                    <!-- Modal Header -->
+                    <div class="sticky top-0 p-6 z-10" style="background: var(--bg-primary); border-bottom: 1px solid var(--border-primary);">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h2 class="text-2xl font-bold mb-1">🤗 Model Browser with Compatibility Check</h2>
+                                <p class="text-sm" style="color: var(--text-secondary);">Models are automatically checked against your system specs</p>
+                            </div>
+                            <button onclick="closeModelSearch()" class="p-2 rounded-lg hover:opacity-80">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Your System Specs Bar -->
+                        <div class="flex items-center gap-4 p-3 rounded-lg mb-4" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                            <span class="text-sm font-medium">Your System:</span>
+                            <span class="badge badge-info">RTX 3080 12GB</span>
+                            <span class="badge badge-info">32GB RAM</span>
+                            <span class="badge badge-info">CUDA 12.1</span>
+                            <span class="text-sm" style="color: var(--text-secondary);">Max recommended: 20B params</span>
+                        </div>
+
+                        <!-- Search and Filters -->
+                        <div class="flex gap-3">
+                            <input type="text" placeholder="Search models..."
+                                   class="flex-1 px-4 py-3 rounded-lg focus:outline-none"
+                                   style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary);">
+                            <button onclick="filterByCompatibility()" class="px-4 py-3 rounded-lg font-medium"
+                                    style="background: var(--accent); color: white;">
+                                Show Only Compatible
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Model List -->
+                    <div class="overflow-y-auto p-6 space-y-4" style="max-height: 60vh;">
+                        <!-- Model Card 1 - Excellent Match -->
+                        <div class="model-card compatibility-excellent p-4 rounded-lg"
+                             style="border: 2px solid;">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="font-semibold">meta-llama/Llama-2-7b-chat-hf</h4>
+                                        <span class="badge badge-success">✓ Excellent Match</span>
+                                        <span class="badge badge-info">Chat</span>
+                                    </div>
+                                    <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                        Perfect for your RTX 3080. Will use ~4.2GB VRAM with headroom for context.
+                                    </p>
+                                    <div class="grid grid-cols-2 gap-4 mt-3">
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Performance on Your System</div>
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex-1 gpu-meter">
+                                                    <div class="gpu-meter-fill gpu-meter-ok" style="width: 35%;"></div>
+                                                </div>
+                                                <span class="text-xs">35% VRAM</span>
+                                            </div>
+                                            <div class="text-xs mt-1" style="color: var(--text-tertiary);">
+                                                ~40 tokens/sec • Instant responses
+                                            </div>
+                                        </div>
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Requirements</div>
+                                            <div class="text-xs" style="color: var(--text-tertiary);">
+                                                • VRAM: 4.2GB (✓ You have 12GB)<br>
+                                                • RAM: 8GB (✓ You have 32GB)<br>
+                                                • Disk: 4.5GB
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onclick="downloadModelWithCheck('llama-2-7b')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                        style="background: var(--success); color: white;">
+                                    Download
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Model Card 2 - Good Match -->
+                        <div class="model-card compatibility-good p-4 rounded-lg"
+                             style="border: 2px solid;">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="font-semibold">meta-llama/Llama-2-13b-chat-hf</h4>
+                                        <span class="badge badge-info">✓ Good Match</span>
+                                        <span class="badge badge-info">Chat</span>
+                                    </div>
+                                    <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                        Larger model, better quality. Will use most of your VRAM but runs well.
+                                    </p>
+                                    <div class="grid grid-cols-2 gap-4 mt-3">
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Performance on Your System</div>
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex-1 gpu-meter">
+                                                    <div class="gpu-meter-fill gpu-meter-warning" style="width: 75%;"></div>
+                                                </div>
+                                                <span class="text-xs">75% VRAM</span>
+                                            </div>
+                                            <div class="text-xs mt-1" style="color: var(--text-tertiary);">
+                                                ~20 tokens/sec • Good speed
+                                            </div>
+                                        </div>
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Requirements</div>
+                                            <div class="text-xs" style="color: var(--text-tertiary);">
+                                                • VRAM: 9GB (✓ You have 12GB)<br>
+                                                • RAM: 16GB (✓ You have 32GB)<br>
+                                                • Disk: 13GB
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onclick="downloadModelWithCheck('llama-2-13b')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                        style="background: var(--info); color: white;">
+                                    Download
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Model Card 3 - Borderline -->
+                        <div class="model-card compatibility-borderline p-4 rounded-lg"
+                             style="border: 2px solid;">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="font-semibold">WizardLM/WizardCoder-15B-V1.0</h4>
+                                        <span class="badge badge-warning">⚠ Borderline</span>
+                                        <span class="badge badge-info">Code</span>
+                                    </div>
+                                    <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                        May cause system slowdown. Consider closing other applications first.
+                                    </p>
+                                    <div class="grid grid-cols-2 gap-4 mt-3">
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Performance on Your System</div>
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex-1 gpu-meter">
+                                                    <div class="gpu-meter-fill gpu-meter-warning" style="width: 92%;"></div>
+                                                </div>
+                                                <span class="text-xs">92% VRAM</span>
+                                            </div>
+                                            <div class="text-xs mt-1" style="color: var(--warning);">
+                                                ~10 tokens/sec • May throttle
+                                            </div>
+                                        </div>
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Requirements</div>
+                                            <div class="text-xs" style="color: var(--text-tertiary);">
+                                                • VRAM: 11GB (⚠ You have 12GB)<br>
+                                                • RAM: 20GB (✓ You have 32GB)<br>
+                                                • Disk: 30GB
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 p-2 rounded text-xs" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);">
+                                        ⚠ Warning: This model will use most of your VRAM. Close GPU-intensive applications before running.
+                                    </div>
+                                </div>
+                                <button onclick="confirmAndDownload('wizardcoder-15b')" class="px-4 py-2 rounded-lg font-medium transition-all hover:shadow-lg"
+                                        style="background: var(--warning); color: white;">
+                                    Download Anyway
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Model Card 4 - Not Recommended -->
+                        <div class="model-card compatibility-not-recommended p-4 rounded-lg opacity-75"
+                             style="border: 2px solid;">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h4 class="font-semibold">falcon-40b-instruct</h4>
+                                        <span class="badge badge-danger">✗ Not Recommended</span>
+                                        <span class="badge badge-info">Instruct</span>
+                                    </div>
+                                    <p class="text-sm mb-2" style="color: var(--text-secondary);">
+                                        Exceeds your system capabilities. Will likely crash or run extremely slowly.
+                                    </p>
+                                    <div class="grid grid-cols-2 gap-4 mt-3">
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Performance on Your System</div>
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex-1 gpu-meter">
+                                                    <div class="gpu-meter-fill gpu-meter-danger" style="width: 100%;"></div>
+                                                </div>
+                                                <span class="text-xs" style="color: var(--danger);">Exceeds VRAM</span>
+                                            </div>
+                                            <div class="text-xs mt-1" style="color: var(--danger);">
+                                                Will use system RAM (very slow)
+                                            </div>
+                                        </div>
+                                        <div class="p-2 rounded" style="background: var(--bg-tertiary);">
+                                            <div class="text-xs font-medium mb-1">Requirements</div>
+                                            <div class="text-xs" style="color: var(--text-tertiary);">
+                                                • VRAM: 24GB (✗ You have 12GB)<br>
+                                                • RAM: 48GB (✗ You have 32GB)<br>
+                                                • Disk: 80GB
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 p-2 rounded text-xs" style="background: rgba(239, 68, 68, 0.1); color: var(--danger);">
+                                        ✗ This model requires at least 24GB VRAM. Consider quantized versions or smaller models.
+                                    </div>
+                                </div>
+                                <button disabled class="px-4 py-2 rounded-lg font-medium opacity-50 cursor-not-allowed"
+                                        style="background: var(--bg-tertiary); color: var(--text-tertiary);">
+                                    Incompatible
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer with Safety Info -->
+                    <div class="sticky bottom-0 p-4" style="background: var(--bg-primary); border-top: 1px solid var(--border-primary);">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4 text-xs" style="color: var(--text-tertiary);">
+                                <span>🛡️ BEAR AI prevents system crashes by checking compatibility</span>
+                                <span>📊 Real-time resource monitoring</span>
+                                <span>⚡ Automatic performance optimization</span>
+                            </div>
+                            <button onclick="openAdvancedSettings()" class="text-xs hover:underline" style="color: var(--accent);">
+                                Advanced Settings →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Monitor Modal -->
+        <div id="systemMonitorModal" class="fixed inset-0 z-50 hidden">
+            <div class="modal-backdrop absolute inset-0" onclick="closeSystemMonitor()"></div>
+            <div class="relative flex items-center justify-center min-h-screen p-4">
+                <div class="relative w-full max-w-3xl rounded-xl shadow-2xl overflow-hidden animate-fadeIn"
+                     style="background: var(--bg-primary); border: 1px solid var(--border-primary);">
+                    <div class="p-6">
+                        <h2 class="text-xl font-bold mb-4">System Resource Monitor</h2>
+
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <!-- GPU Monitor -->
+                            <div class="p-4 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <h3 class="font-medium mb-3">GPU: NVIDIA RTX 3080</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>VRAM Usage</span>
+                                            <span>4.2 / 12 GB</span>
+                                        </div>
+                                        <div class="gpu-meter">
+                                            <div class="gpu-meter-fill gpu-meter-ok" style="width: 35%;"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>GPU Load</span>
+                                            <span>42%</span>
+                                        </div>
+                                        <div class="gpu-meter">
+                                            <div class="gpu-meter-fill gpu-meter-ok" style="width: 42%;"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>Temperature</span>
+                                            <span>65°C</span>
+                                        </div>
+                                        <div class="gpu-meter">
+                                            <div class="gpu-meter-fill gpu-meter-ok" style="width: 65%;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="text-xs" style="color: var(--text-tertiary);">
+                                        Power: 180W / 320W • Fan: 45%
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CPU Monitor -->
+                            <div class="p-4 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                <h3 class="font-medium mb-3">CPU: Intel Core i7-10700K</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>CPU Usage</span>
+                                            <span>45%</span>
+                                        </div>
+                                        <div class="gpu-meter">
+                                            <div class="gpu-meter-fill gpu-meter-ok" style="width: 45%;"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>RAM Usage</span>
+                                            <span>17.6 / 32 GB</span>
+                                        </div>
+                                        <div class="gpu-meter">
+                                            <div class="gpu-meter-fill gpu-meter-warning" style="width: 55%;"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span>Temperature</span>
+                                            <span>72°C</span>
+                                        </div>
+                                        <div class="gpu-meter">
+                                            <div class="gpu-meter-fill gpu-meter-warning" style="width: 72%;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="text-xs" style="color: var(--text-tertiary);">
+                                        Cores: 8 • Threads: 16 • 3.8 GHz
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Models -->
+                        <div class="p-4 rounded-lg" style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                            <h3 class="font-medium mb-3">Active Models</h3>
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between p-2 rounded" style="background: var(--bg-tertiary);">
+                                    <div>
+                                        <span class="text-sm font-medium">Llama-2-7B-Chat</span>
+                                        <div class="text-xs" style="color: var(--text-tertiary);">VRAM: 4.2GB • Context: 4096</div>
+                                    </div>
+                                    <button class="text-xs px-2 py-1 rounded" style="background: var(--danger); color: white;">
+                                        Unload
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 mt-4">
+                            <button onclick="closeSystemMonitor()" class="px-4 py-2 rounded-lg"
+                                    style="background: var(--bg-secondary); border: 1px solid var(--border-primary);">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simulate system detection
+        function detectSystemSpecs() {
+            // This would actually call the Tauri backend to get real specs
+            const specs = {
+                gpu: {
+                    name: 'NVIDIA RTX 3080',
+                    vram: 12288, // MB
+                    cuda: true,
+                    driver: '531.18'
+                },
+                cpu: {
+                    name: 'Intel Core i7-10700K',
+                    cores: 8,
+                    threads: 16,
+                    freq: 3.8
+                },
+                ram: {
+                    total: 32768, // MB
+                    available: 14336
+                },
+                os: 'Windows 11 Pro',
+                capability: 'high' // low, medium, high, extreme
+            };
+
+            updateSystemDisplay(specs);
+            startResourceMonitoring();
+        }
+
+        function updateSystemDisplay(specs) {
+            // Update all system info displays
+            document.getElementById('gpuName').textContent = specs.gpu.name + ' ' + (specs.gpu.vram/1024) + 'GB';
+            document.getElementById('cpuName').textContent = specs.cpu.name;
+            document.getElementById('ramInfo').textContent = (specs.ram.total/1024) + 'GB DDR4';
+
+            // Set system capability badge
+            const capBadge = document.getElementById('systemCapability');
+            if (specs.capability === 'high') {
+                capBadge.className = 'badge badge-success';
+                capBadge.textContent = 'High Performance System';
+            } else if (specs.capability === 'medium') {
+                capBadge.className = 'badge badge-info';
+                capBadge.textContent = 'Moderate Performance System';
+            } else {
+                capBadge.className = 'badge badge-warning';
+                capBadge.textContent = 'Limited Performance System';
+            }
+        }
+
+        function startResourceMonitoring() {
+            // Simulate real-time resource monitoring
+            setInterval(() => {
+                // GPU monitoring
+                const gpuUsage = 35 + Math.random() * 10;
+                const gpuMeter = document.getElementById('gpuMeter');
+                gpuMeter.style.width = gpuUsage + '%';
+                gpuMeter.className = gpuUsage > 80 ? 'gpu-meter-fill gpu-meter-danger' :
+                                     gpuUsage > 60 ? 'gpu-meter-fill gpu-meter-warning' :
+                                     'gpu-meter-fill gpu-meter-ok';
+
+                // CPU monitoring
+                const cpuUsage = 40 + Math.random() * 15;
+                const cpuMeter = document.getElementById('cpuMeter');
+                cpuMeter.style.width = cpuUsage + '%';
+                cpuMeter.className = cpuUsage > 80 ? 'gpu-meter-fill gpu-meter-danger' :
+                                     cpuUsage > 60 ? 'gpu-meter-fill gpu-meter-warning' :
+                                     'gpu-meter-fill gpu-meter-ok';
+
+                // RAM monitoring
+                const ramUsage = 50 + Math.random() * 10;
+                const ramMeter = document.getElementById('ramMeter');
+                ramMeter.style.width = ramUsage + '%';
+                ramMeter.className = ramUsage > 80 ? 'gpu-meter-fill gpu-meter-danger' :
+                                     ramUsage > 60 ? 'gpu-meter-fill gpu-meter-warning' :
+                                     'gpu-meter-fill gpu-meter-ok';
+
+                // Update temperatures
+                document.getElementById('gpuTemp').textContent = (60 + Math.random() * 10).toFixed(0) + '°C';
+                document.getElementById('cpuTemp').textContent = (65 + Math.random() * 15).toFixed(0) + '°C';
+            }, 2000);
+        }
+
+        function downloadModelWithCheck(modelName) {
+            // Check system resources before download
+            const currentVRAM = 4.2; // GB in use
+            const availableVRAM = 12 - currentVRAM;
+
+            if (modelName === 'llama-2-13b' && availableVRAM < 9) {
+                if (confirm('⚠️ Warning: This model needs 9GB VRAM. You have ' + availableVRAM.toFixed(1) + 'GB available.\n\nWould you like to:\n1. Continue anyway (may be slow)\n2. Unload current model first\n3. Cancel')) {
+                    startDownload(modelName);
+                }
+            } else {
+                startDownload(modelName);
+            }
+        }
+
+        function confirmAndDownload(modelName) {
+            const warning = `⚠️ SYSTEM WARNING
+
+This model is borderline for your system and may cause:
+• System slowdown
+• Application freezing
+• High temperatures
+
+Recommendations:
+1. Close all other applications
+2. Save your work
+3. Monitor temperatures
+
+Continue with download?`;
+
+            if (confirm(warning)) {
+                startDownload(modelName);
+            }
+        }
+
+        function startDownload(modelName) {
+            alert(`Starting safe download of ${modelName}\n\nBEAR AI will:\n• Monitor system resources\n• Pause if temperature exceeds limits\n• Optimize for your hardware\n• Prevent system crashes`);
+        }
+
+        function openModelSearch() {
+            document.getElementById('modelSearchModal').classList.remove('hidden');
+        }
+
+        function closeModelSearch() {
+            document.getElementById('modelSearchModal').classList.add('hidden');
+        }
+
+        function openSystemMonitor() {
+            document.getElementById('systemMonitorModal').classList.remove('hidden');
+        }
+
+        function closeSystemMonitor() {
+            document.getElementById('systemMonitorModal').classList.add('hidden');
+        }
+
+        function filterByCompatibility() {
+            alert('Filtering to show only models compatible with your system:\n• RTX 3080 12GB VRAM\n• 32GB RAM\n• Models up to 20B parameters');
+        }
+
+        function openAdvancedSettings() {
+            alert('Advanced Settings:\n\n• Quantization: 4-bit, 8-bit, 16-bit\n• Context Length: 2048-32768\n• GPU Layers: Auto/Manual\n• CPU Threads: 1-16\n• Temperature Limits\n• Memory Allocation');
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey)) {
+                if (e.key === 'k') {
+                    e.preventDefault();
+                    openModelSearch();
+                } else if (e.key === 'm') {
+                    e.preventDefault();
+                    openSystemMonitor();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
