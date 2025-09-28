@@ -59,7 +59,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload Windows Installer
-        uses: actions/upload-artifact@v4  # Updated to v4
+        uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: |
